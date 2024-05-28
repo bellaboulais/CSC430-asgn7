@@ -1,7 +1,8 @@
 #lang typed/racket
 (require typed/rackunit)
 
-;; Assignment 7
+;; Assignment 4
+
 
 ; ----------------------------- ;
 ; ----- DATA DEFINITIONS ------ ;
@@ -49,102 +50,12 @@
                       (list 'error (primV 'error))
                       ))
 
-;------------------------------ ;
-; ------ MAIN FUNCTIONS ------- ;
-; ----------------------------- ;
-
-; top-interp
-; PURPOSE: evaluate a program
-(: top-interp (Sexp -> String))
-(define (top-interp s)
-  (define parsed-s (parse s))
-  ;(display "parse: ")
-  ;(displayln parsed-s)
-  (define interp-s (interp parsed-s top-env))
-  ;(display "interp: ")
-  ;(displayln interp-s)
-  (serialize interp-s))
-
-
-; serialize
-;   PURPOSE:  convert a value to a string
-(: serialize (Value -> String))
-(define (serialize v)
-  (match v
-    [(numV n) (~v n)]
-    [(boolV b) (if b "true" "false")]
-    [(strV s) (~v s)]
-    [(closV arg body _) "#<procedure>"]
-    [(primV p) "#<primop>"]))
-
-
-; parse
-; PURPOSE : parse S-expressions into ExprC's
-(: parse (Sexp -> ExprC))
-(define (parse s)
-  (match s
-    [(? real? n) (numC n)]                           
-    [(? symbol? s) (idC s)]
-    [(? string? str) (strC str)]
-    [(list 'if ': test ': then ': else) (ifC (parse test) (parse then) (parse else))]
-    [(list 'locals ': clauses ... ': body) 
-     (define parsed-clauses (parse-clause (cast clauses Sexp)))
-     (define parsed-body (parse body))
-     (define ids (cast (map (lambda ([clause : Clause]) (Clause-id clause)) parsed-clauses) (Listof Symbol)))
-     (if (equal? ids (remove-duplicates ids))
-         (appC (lamC ids parsed-body)
-               (map (lambda ([c : Clause]) (Clause-expr c)) parsed-clauses))
-         (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" ids))]
-    [(list 'lamb ': args ... ': body) 
-     (if (andmap symbol? args)
-         (if (equal? args (remove-duplicates args))
-             (lamC (cast args (Listof Symbol)) (parse body))
-             (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" args))
-         (error 'parse "ZODE: Invalid arguments for lambda expression: ~a" args))]
-    [(list f args ...) 
-     (define parsed-args (map (lambda ([arg : Sexp]) (parse arg)) args))
-     (match f
-       [(or '+ '- '* '/) ; Check if f is a mathematical operation
-        (cond
-          [(check-if parsed-args)
-           (appC (parse f) parsed-args)]
-          [else (error 'parse "ZODE: Invalid arguments for operation ~a" f)])]
-       ['locals (error 'parse "ZODE: Invalid locals argument ~a" args)]
-       ['if (error 'parse "ZODE: Invalid if argument ~a" args)]
-       ['lamb (error 'parse "ZODE: Invalid lamb argument ~a" args)]
-       [else (appC (parse f) parsed-args)])]))  
-
-
-; interp
-; PURPOSE:  turn ExprC's from parse into values and evaluate
-(: interp (ExprC Env -> Value))
-(define (interp e env)
-  (match e                                                                     
-    [(numC n) (numV n)]  
-    [(idC x) (lookup x env)] 
-    [(strC s) (strV s)] 
-    [(ifC test then els) (match (interp test env)
-                           [(boolV #t) (interp then env)]
-                           [(boolV #f) (interp els env)]
-                           [else (error 'interp "ZODE: Invalid if expression: ~e" e)])]
-    [(lamC args body)
-     (closV args body env)] 
-    [(appC f args) (match (interp f env)
-                     [(closV params body env2)
-                      (define argval (map (lambda ([arg : ExprC]) (interp arg env)) args))
-                      (cond
-                        [(= (length params) (length args))
-                         (interp body (extend-env params argval env2))]
-                        [else (error 'interp "ZODE: Invalid number of arguments: ~e" e)])]
-                     [(primV p) (interp-primitive p args env)]
-                     [else (error 'interp "ZODE: Invalid application: ~e" e)])]))
-
 
 ; ----------------------------- ;
-; -- INTERP HELPER FUNCTIONS -- ;
+; ----- INTERP FUNCTIONS ------ ;
 ; ----------------------------- ;
 
-; lookup 
+; lookup NOT COMPLETE (waiting on more primitives to write more test cases)
 ;  PARAMS:  x : Symbol
 ;           env : Env
 ;  RETURNS: Value
@@ -168,15 +79,75 @@
            (list param arg))
          params argval))
   (cast (append new-bindings env) Env)) 
-  
+   
+
+; top-interp
+(: top-interp (Sexp -> String)) 
+;   PARAMS:  s : Sexp 
+;   RETURNS: String
+;   PURPOSE:  
+(define (top-interp s)
+  (define parsed-s (parse s))
+  ;(display "parse: ")
+  ;(displayln parsed-s)
+  (define interp-s (interp parsed-s top-env))
+  ;(display "interp: ")
+  ;(displayln interp-s)
+  (serialize interp-s))
+
+ 
+; serialize
+(: serialize (Value -> String))
+;   PARAMS:   v:    Value           the value to serialize
+;   RETURNS:  String
+;   PURPOSE:  convert a value to a string
+(define (serialize v)
+  (match v
+    [(numV n) (~v n)]
+    [(boolV b) (if b "true" "false")]
+    [(strV s) (~v s)]
+    [(closV arg body _) "#<procedure>"]
+    [(primV p) "#<primop>"]))
+
+
+; interp
+(: interp (ExprC Env -> Value))
+;   PARAMS:   e:    ExprC           the expression to interpret
+;             env:  Envrionment     list of functions defined in the current environment
+;   RETURNS:  Value
+;   PURPOSE:  
+(define (interp e env)
+  ;(display "interp function: ")
+  ;(displayln e)
+  ;(displayln "")
+  (match e                                                                     
+    [(numC n) (numV n)]  
+    [(idC x) (lookup x env)] 
+    [(strC s) (strV s)] 
+    [(ifC test then els) (match (interp test env)
+                           [(boolV #t) (interp then env)]
+                           [(boolV #f) (interp els env)]
+                           [else (error 'interp "ZODE: Invalid if expression: ~e" e)])]
+    [(lamC args body)
+     (closV args body env)] 
+    [(appC f args) (match (interp f env)
+                     [(closV params body env2)
+                      (define argval (map (lambda ([arg : ExprC]) (interp arg env)) args))
+                      (cond
+                        [(= (length params) (length args))
+                         (interp body (extend-env params argval env2))]
+                        [else (error 'interp "ZODE: Invalid number of arguments: ~e" e)])]
+                     [(primV p) (interp-primitive p args env)]
+                     [else (error 'interp "ZODE: Invalid application: ~e" e)])]))
+
 
 ; interp-primitive
+(: interp-primitive (Symbol (Listof ExprC) Env -> Value))
 ;   PARAMS:   p:    Symbol          the primitive to interpret
 ;             args: (Listof Value)  the arguments to the primitive
 ;   RETURNS:  Value
 ;   PURPOSE:  helper for interp to interpret primitives
-(: interp-primitive (Symbol (Listof ExprC) Env -> Value))
-(define (interp-primitive p exprs env)
+(define (interp-primitive [p : Symbol][exprs : (Listof ExprC)] [env : Env])
   (match p 
     ['+ (2num-op (interp (first exprs) env) (interp (second exprs) env) +)]
     ['- (2num-op (interp (first exprs) env) (interp (second exprs) env) -)]
@@ -199,15 +170,14 @@
     ['error (error 'user-error "ZODE: error ~e" (serialize (interp (first exprs) env)))]
     [else (error 'interp-primitive "ZODE: Invalid primitive ~e" p)]))
 
-
 ; 2num-op
+(: 2num-op (Value Value (Real Real -> Real) -> Value))
 ;   PARAMS:   l:    Value           the left operand
 ;             r:    Value           the right operand
 ;             operator: (Number Number -> Number) the operator to apply
 ;   RETURNS:  Value
 ;   PURPOSE:  helper for interp-primitive to apply a binary operator to two numbers
-(: 2num-op (Value Value (Real Real -> Real) -> Value))
-(define (2num-op l r operator) 
+(define (2num-op [l : Value] [r : Value] [operator : (Real Real -> Real)]) : Value
   (cond
     [(and (numV? l) (numV? r))
      (numV (operator (numV-n l) (numV-n r)))] 
@@ -217,12 +187,52 @@
 
 
 ; ---------------------------- ; 
-; -- PARSE HELPER FUNCTIONS -- ;
+; ----- PARSER FUNCTIONS ----- ;
 ; ---------------------------- ;
 
-; check-if
-; PURPOSE: helper function to check for key word if
+; parse  
+(: parse (Sexp -> ExprC))
+;   PARAMS:   s :  Sexp 
+;   RETURNS:  ExprC
+;   PURPOSE:  
+(define (parse s)
+  (match s
+    [(? real? n) (numC n)] ; real                           
+    [(? symbol? s) (idC s)] ; variable
+    [(? string? str) (strC str)] ; string
+    [(list 'if ': test ': then ': else) (ifC (parse test) (parse then) (parse else))] ; if
+    
+    [(list 'locals ': clauses ... ': body) ; locals
+     (define parsed-clauses (parse-clause (cast clauses Sexp)))
+     (define parsed-body (parse body))
+     (define ids (cast (map (lambda ([clause : Clause]) (Clause-id clause)) parsed-clauses) (Listof Symbol)))
+     (if (equal? ids (remove-duplicates ids))
+         (appC (lamC ids parsed-body)
+               (map (lambda ([c : Clause]) (Clause-expr c)) parsed-clauses))
+         (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" ids))]
+    
+    [(list 'lamb ': args ... ': body) ; lambC
+     (if (andmap symbol? args)
+         (if (equal? args (remove-duplicates args))
+             (lamC (cast args (Listof Symbol)) (parse body))
+             (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" args))
+         (error 'parse "ZODE: Invalid arguments for lambda expression: ~a" args))]
+    [(list f args ...) ; appC
+     (define parsed-args (map (lambda ([arg : Sexp]) (parse arg)) args))
+     (match f
+       [(or '+ '- '* '/) ; Check if f is a mathematical operation
+        (cond
+          [(check-if parsed-args)
+           (appC (parse f) parsed-args)]
+          [else (error 'parse "ZODE: Invalid arguments for operation ~a" f)])]
+       ['locals (error 'parse "ZODE: Invalid locals argument ~a" args)]
+       ['if (error 'parse "ZODE: Invalid if argument ~a" args)]
+       ['lamb (error 'parse "ZODE: Invalid lamb argument ~a" args)]
+       [else (appC (parse f) parsed-args)])]))  
+
+ 
 (: check-if ((Listof ExprC) -> Boolean))
+; helper function to check for key word if
 (define (check-if lst) 
   (cond
     [(empty? lst) #t]
