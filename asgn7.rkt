@@ -16,13 +16,13 @@
 
  
 ; Define the ExprC for the ZODE4 language
-(define-type ExprC (U numC idC strC ifC locals local-recC lamC appC))                 
+(define-type ExprC (U numC idC strC ifC locals local-rec lamC appC))                 
 (tstruct numC ([n : Real]))                           
 (tstruct idC ([name : Symbol]))                           
 (tstruct strC ([str : String]))
 (tstruct ifC ([test : ExprC] [then : ExprC] [else : ExprC]))
 (tstruct locals ([bindings : (Listof Clause)] [body : ExprC]))
-(tstruct local-recC ([id : Symbol] [lamdef : lamC] [expr : ExprC]))
+(tstruct local-rec ([id : Symbol] [lamdef : lamC] [expr : ExprC]))
 ;(tstruct lamC ([args : (Listof Symbol)] [body : ExprC]))
 (tstruct lamC ([args : (Listof Symbol)] [types : (Listof Ty)] [ret-type : Ty] [expr : ExprC])) ; lamb-def
 (tstruct appC ([f : ExprC] [args : (Listof ExprC)])) 
@@ -104,10 +104,15 @@
          (appC (lamC ids parsed-body)
                (map (lambda ([c : Clause]) (Clause-expr c)) parsed-clauses))
          (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" ids))]
+    [(list 'local-rec id '=' lam-def expr)
+     (define parsed-lam (parse lam-def))
+     (if (lamC? parsed-lam)
+         (local-recC id parsed-lam (parse expr))
+         (error 'parse "ZODE: Expected a lambda expression in local-rec"))]
     [(list 'lamb ': types ... args ... '-> ret-type ': body) 
      (if (andmap symbol? args)
          (if (equal? args (remove-duplicates args))
-             (lamC (cast args (Listof Symbol)) types (parse-type ret-type) (parse body))
+             (lamC (cast args (Listof Symbol)) (map parse-type types) (parse-type ret-type) (parse body))
              (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" args))
          (error 'parse "ZODE: Invalid arguments for lambda expression: ~a" args))]
     [(list f args ...) 
@@ -158,10 +163,8 @@
     ['num 'num]
     ['bool 'bool]
     ['str 'str]
-    [(list '-> args ret)
-     ((lambda (parsed-args parsed-ret) (cons parsed-args parsed-ret))
-      (map parse-type args)
-      (parse-type ret))]
+    [(list args '-> ret)
+     (cons (map parse-type args) (parse-type ret))]
     [else (error 'parse-type "ZODE: Invalid type ~a" s)]))
 
 ; ----------------------------- ;
