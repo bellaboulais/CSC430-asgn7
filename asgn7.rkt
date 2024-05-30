@@ -104,10 +104,10 @@
          (appC (lamC ids parsed-body)
                (map (lambda ([c : Clause]) (Clause-expr c)) parsed-clauses))
          (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" ids))]
-    [(list 'local-rec id '=' lam-def expr)
+    [(list 'local-rec id '= lam-def expr)
      (define parsed-lam (parse lam-def))
      (if (lamC? parsed-lam)
-         (local-recC id parsed-lam (parse expr))
+         (local-rec (cast id Symbol) parsed-lam (parse expr))
          (error 'parse "ZODE: Expected a lambda expression in local-rec"))]
     [(list 'lamb ': types ... args ... '-> ret-type ': body) 
      (if (andmap symbol? args)
