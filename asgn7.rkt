@@ -24,7 +24,7 @@
 (tstruct locals ([bindings : (Listof Clause)] [body : ExprC]))
 (tstruct local-rec ([id : Symbol] [lamdef : lamC] [expr : ExprC]))
 ;(tstruct lamC ([args : (Listof Symbol)] [body : ExprC]))
-(tstruct lamC ([args : (Listof Symbol)] [types : (Listof Ty)] [ret-type : Ty] [expr : ExprC])) ; lamb-def
+(tstruct lamC ([args : (Listof Symbol)] [types : (Listof Ty)] [ret-type : (Option Ty)] [expr : ExprC])) ; lamb-def
 (tstruct appC ([f : ExprC] [args : (Listof ExprC)])) 
 
 ; Define the Clause: inside locals... ex. add6 = {curradd 6} :
@@ -54,7 +54,8 @@
                       ))
 
 ; Define Type definitions
-(define-type Ty (U 'num 'bool 'str (Listof Ty)))
+(define-type Ty (U 'num 'bool 'str fun-ty))
+(tstruct fun-ty ([args : (Listof Ty)] [ret : Ty]))
 
 
 
@@ -100,8 +101,9 @@
      (define parsed-clauses (parse-clause (cast clauses Sexp)))
      (define parsed-body (parse body))
      (define ids (cast (map (lambda ([clause : Clause]) (Clause-id clause)) parsed-clauses) (Listof Symbol)))
+     (define types (cast (map (lambda ([clause : Clause]) (Clause-type clause)) parsed-clauses) (Listof Ty)))
      (if (equal? ids (remove-duplicates ids))
-         (appC (lamC ids parsed-body)
+         (appC (lamC ids types #f parsed-body) ; how to get return type from clause??
                (map (lambda ([c : Clause]) (Clause-expr c)) parsed-clauses))
          (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" ids))]
     [(list 'local-rec id '= lam-def expr)
@@ -109,10 +111,11 @@
      (if (lamC? parsed-lam)
          (local-rec (cast id Symbol) parsed-lam (parse expr))
          (error 'parse "ZODE: Expected a lambda expression in local-rec"))]
-    [(list 'lamb ': types ... args ... '-> ret-type ': body) 
+    [(list 'lamb ': types ... args ... '-> ret-type ': body)
+     (define parse-types (map (lambda ([t : Sexp]) (parse-type t)) types))
      (if (andmap symbol? args)
          (if (equal? args (remove-duplicates args))
-             (lamC (cast args (Listof Symbol)) (map parse-type types) (parse-type ret-type) (parse body))
+             (lamC (cast args (Listof Symbol)) (parse-types) (parse-type ret-type) (parse body))
              (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" args))
          (error 'parse "ZODE: Invalid arguments for lambda expression: ~a" args))]
     [(list f args ...) 
@@ -164,7 +167,7 @@
     ['bool 'bool]
     ['str 'str]
     [(list args '-> ret)
-     (cons (map parse-type args) (parse-type ret))]
+     (fun-ty (map parse-type args) (parse-type ret))]
     [else (error 'parse-type "ZODE: Invalid type ~a" s)]))
 
 ; ----------------------------- ;
