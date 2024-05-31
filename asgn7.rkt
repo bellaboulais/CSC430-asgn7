@@ -58,7 +58,19 @@
 (tstruct fun-ty ([args : (Listof Ty)] [ret : Ty]))
 
 ;; Type Environment
-(define-type TEnv (HashTable Symbol Ty))
+(define-type TEnv (Listof (List Symbol Ty)))
+(define base-tenv
+  (list
+   (list '+ (fun-ty (list 'num 'num) 'num))
+   (list '- (fun-ty (list 'num 'num) 'num))
+   (list '* (fun-ty (list 'num 'num) 'num))
+   (list '/ (fun-ty (list 'num 'num) 'num))
+   (list '<= (fun-ty (list 'num 'num) 'bool))
+   (list 'num-eq? (fun-ty (list 'num 'num) 'bool))
+   (list 'str-eq? (fun-ty (list 'str 'str) 'bool))
+   (list 'substring (fun-ty (list 'str 'num 'num) 'str))
+   (list 'true 'bool)
+   (list 'false 'bool)))
 
 
 ;------------------------------ ;
@@ -146,6 +158,14 @@
                      [(primV p) (interp-primitive p args env)]
                      [else (error 'interp "ZODE: Invalid application: ~e" e)])]))
 
+
+; type-check
+; PURPOSE: type-check an expression
+(: type-check (ExprC TEnv -> Ty))
+(define (type-check e tenv)
+  (displayln "implement me! - type-check line 166")
+  'num)
+
 ; ----------------------------- ;
 ; ------- TYPE FUNCTIONS ------ ;
 ; ----------------------------- ;
@@ -161,27 +181,24 @@
      (fun-ty parsed-args (parse-type ret))]
     [else (error 'parse-type "ZODE: Invalid type ~a" s)]))
 
+
+
+
 ; ----------------------------- ;
 ; -- INTERP HELPER FUNCTIONS -- ;
 ; ----------------------------- ;
 
 ; lookup 
-;  PARAMS:  x : Symbol
-;           env : Env
-;  RETURNS: Value
-;  PURPOSE: lookup the value of x in the environment env
+; PURPOSE: lookup the value of x in the environment env
 (: lookup (Symbol Env -> Value))
-(define (lookup [x : Symbol] [env : Env])
+(define (lookup x env)
   (cond
     [(empty? env) (error 'lookup "ZODE: Variable not found ~e" x)]
     [(equal? x (first (first env))) (second (first env))]
     [else (lookup x (rest env))])) 
 
 ; extend-env
-;  PARAMS:  clauses : Clauses
-;           env : Env
-;  RETURNS: Env
-;  PURPOSE: extend the environment env with the definitions in another environment.
+; PURPOSE: extend the environment env with the definitions in another environment.
 (: extend-env ((Listof Symbol) (Listof Value) Env -> Env))
 (define (extend-env params argval env)
   (define new-bindings
@@ -457,9 +474,9 @@
   (regexp-quote
    "parse-lamC: Invalid argument: ()"))
  (lambda () (top-interp '((lamb : [] -> num : 9) 17))))
-;(check-equal? (top-interp (quote ((lamb : seven : (seven)) 
- ;                   ((lamb : minus :(lamb : : (minus (+ 3 10) (* 2 3))))
-  ;                   (lamb : x y : (+ x (* -1 y))))))) "7")
+;(check-equal? (top-interp (quote ((lamb : seven -> num : (seven)) 
+ ;                   ((lamb : minus -> num :(lamb : -> num: (minus (+ 3 10) (* 2 3))))
+  ;                   (lamb : [num x] [num y] -> num : (+ x (* -1 y))))))) "7")
 
 ; test cases for locals 
 ;(check-exn (regexp (regexp-quote "parse-clause: ZODE: Invalid clause expression"))
