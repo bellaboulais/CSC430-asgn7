@@ -100,15 +100,8 @@
     [(? string? str) (strC str)]
     [(list 'if ': test ': then ': else) (ifC (parse test) (parse then) (parse else))]
     [(list 'locals ': clauses ... ': body) 
-     (define parsed-clauses (parse-clause (cast clauses Sexp)))
-     (define parsed-body (parse body))
-     (define ids (cast (map (lambda ([clause : Clause]) (Clause-id clause)) parsed-clauses) (Listof Symbol)))
-     (define types (cast (map (lambda ([clause : Clause]) (Clause-type clause)) parsed-clauses) (Listof Ty)))
-     (if (equal? ids (remove-duplicates ids))
-         (appC (lamC types ids #f parsed-body) ; how to get return type from clause??
-               (map (lambda ([c : Clause]) (Clause-expr c)) parsed-clauses))
-         (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" ids))]
-    [(list 'local-rec id '= lam-def expr)
+     (parse-locals s)]
+    [(list 'local-rec ': id '= lam-def ': expr)
      (define parsed-lam (parse lam-def))
      (if (lamC? parsed-lam)
          (local-rec (cast id Symbol) parsed-lam (parse expr))
@@ -221,7 +214,6 @@
            [(and (numV? e1) (numV? e2))
             (boolV (<= (numV-n e1) (numV-n e2)))] 
            [else (error 'interp-primitive "ZODE: Invalid arguments for <= ~e" exprs)])]
-    ; ['equal? (boolV (equal? (interp (first exprs) env) (interp (second exprs) env)))]
     ['num-eq? (boolV (equal? (interp (first exprs) env) (interp (second exprs) env)))]
     ['str-eq? (boolV (equal? (interp (first exprs) env) (interp (second exprs) env)))] 
     ['true (boolV #t)] 
@@ -281,6 +273,21 @@
              (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" args))
          (error 'parse "ZODE: Invalid arguments for lambda expression: ~a" args))]
     [else (error 'parse-lamC "ZODE: Invalid lambda expression ~a" s)]))
+
+; parse-locals
+; PURPOSE: parse locals 
+(: parse-locals (Sexp -> appC))
+(define (parse-locals s)
+  (match s
+    [(list 'locals ': clauses ... ': body) 
+     (define parsed-clauses (parse-clause (cast clauses Sexp)))
+     (define parsed-body (parse body))
+     (define ids (cast (map (lambda ([clause : Clause]) (Clause-id clause)) parsed-clauses) (Listof Symbol)))
+     (define types (cast (map (lambda ([clause : Clause]) (Clause-type clause)) parsed-clauses) (Listof Ty)))
+     (if (equal? ids (remove-duplicates ids))
+         (appC (lamC types ids #f parsed-body)
+               (map (lambda ([c : Clause]) (Clause-expr c)) parsed-clauses))
+         (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" ids))]))
  
 ; parse-clause
 ; PURPOSE:  parse clauses from locals statement
@@ -462,7 +469,7 @@
 ;(check-exn (regexp (regexp-quote "parse: ZODE: Invalid locals argument (: x = 5 :)"))
  ;          (lambda () (parse '(locals : x = 5 :))))
 ;(check-equal? (parse '{locals : num z = {+ 9 14} : num y = 98 : {+ z y}})
- ;            (appC (lamC '(z y) '(num num) 'num (appC (idC '+) (list (idC 'z) (idC 'y))))
+ ;            (appC (lamC '(num num) '(z y) 'num (appC (idC '+) (list (idC 'z) (idC 'y))))
   ;                (list (appC (idC '+) (list (numC 9) (numC 14))) (numC 98))))
 ;(check-equal? (parse '{locals : x = 2 : y = 6 : {+ x y}})
  ;           (appC (lamC '(x y) '(num num) 'num (appC (idC '+) (list (idC 'x) (idC 'y))))
