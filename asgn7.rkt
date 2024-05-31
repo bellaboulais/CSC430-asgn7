@@ -82,14 +82,15 @@
 (: top-interp (Sexp -> String))
 (define (top-interp s)
   (define parsed-s (parse s))
-  
+  (display "\nparsed-s: ") (displayln parsed-s)
   (define type-checked (type-check parsed-s base-tenv))
-  
+  (display "typed-checked: ") (displayln type-checked)
   (define interp-s (interp parsed-s top-env))
-  (serialize interp-s))
+  (display "interp-s: ") (displayln interp-s)
+  (serialize interp-s)) 
 
-
-; serialize
+ 
+; serialize 
 ;   PURPOSE:  convert a value to a string
 (: serialize (Value -> String))
 (define (serialize v)
@@ -106,9 +107,9 @@
 (: parse (Sexp -> ExprC))
 (define (parse s)
   (match s
-    [(? real? n) (numC n)]                           
+    [(? real? s) (numC s)]                           
     [(? symbol? s) (idC s)]
-    [(? string? str) (strC str)]
+    [(? string? s) (strC s)]
     [(list 'if ': test ': then ': else) (ifC (parse test) (parse then) (parse else))]
     [(list 'locals ': clauses ... ': body) 
      (parse-locals s)]
@@ -166,7 +167,13 @@
     [(numC _) 'num]
     [(idC _) (lookup-type e tenv)]
     [(strC _) 'str]
-    [(ifC test then els) (displayln "implement ifC type check") 'bool]
+    [(ifC test then els)
+     (let ([test-type (type-check test tenv)]
+           [then-type (type-check then tenv)]
+           [else-type (type-check els tenv)])
+       (if (and (equal? test-type 'bool) (equal? then-type else-type))
+           then-type
+           (error 'type-check "ZODE: Invalid types in if expression")))]
     [(local-rec id lamdef expr) (displayln "implement local-rec type check") 'num] ; NEED TO IMPLEMENT
     [(lamC types args ret-type body) (displayln "implement lamC type check") 'num] ; NEED TO IMPLEMENT
     [(appC f args) (displayln "implement appC type check") 'num])) ; NEED TO IMPLEMENT
@@ -189,15 +196,16 @@
      (fun-ty parsed-args (parse-type ret))]
     [else (error 'parse-type "ZODE: Invalid type ~a" s)]))
 
-; lookup-type
-; PURPOSE: lookup an exprC in the base-type environment and return the type
 (: lookup-type (ExprC TEnv -> Ty))
-(define (lookup-type e tenv)
-  (cond
-    [(empty? tenv) (error 'lookup "ZODE: Variable not found ~e" e)]
-    [(equal? e (first (first tenv))) (second (first tenv))]
-    [else (lookup-type e (rest tenv))]))
-
+(define (lookup-type x tenv)
+  (match x
+    [(idC s)
+     (cond
+       [(empty? tenv) (error 'lookup-type "ZODE: Variable not found ~e" x)]
+       [(equal? s (first (first tenv))) (second (first tenv))]
+       [else (lookup-type x (rest tenv))])]
+    [else (error 'lookup-type "ZODE: Variable not found ~e" x)])) 
+ 
 
 
 ; ----------------------------- ;
@@ -481,7 +489,9 @@
  ;          (lambda () (parse '(locals : x = 2 : : = "" : "World"))))
 
 
-; test cases for top-interp               
+; test cases for top-interp
+(check-equal? (top-interp '5) "5")
+(check-equal? (top-interp "hi") "\"hi\"")
 (check-equal? (top-interp '{+ 5 6}) "11")
 (check-equal? (top-interp '{{lamb : [num x] -> num : {+ x x}} 2}) "4")
 (check-equal? (top-interp (quote (if : true : + : -))) "#<primop>")
