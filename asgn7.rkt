@@ -82,11 +82,10 @@
 (: top-interp (Sexp -> String))
 (define (top-interp s)
   (define parsed-s (parse s))
-  ;(display "parse: ")
-  ;(displayln parsed-s)
+  
+  (define type-checked (type-check parsed-s base-tenv))
+  
   (define interp-s (interp parsed-s top-env))
-  ;(display "interp: ")
-  ;(displayln interp-s)
   (serialize interp-s))
 
 
@@ -163,24 +162,41 @@
 ; PURPOSE: type-check an expression
 (: type-check (ExprC TEnv -> Ty))
 (define (type-check e tenv)
-  (displayln "implement me! - type-check line 166")
-  'num)
+  (match e
+    [(numC _) 'num]
+    [(idC _) (lookup-type e tenv)]
+    [(strC _) 'str]
+    [(ifC test then els) (displayln "implement ifC type check") 'bool]
+    [(local-rec id lamdef expr) (displayln "implement local-rec type check") 'num] ; NEED TO IMPLEMENT
+    [(lamC types args ret-type body) (displayln "implement lamC type check") 'num] ; NEED TO IMPLEMENT
+    [(appC f args) (displayln "implement appC type check") 'num])) ; NEED TO IMPLEMENT
+
 
 ; ----------------------------- ;
 ; ------- TYPE FUNCTIONS ------ ;
 ; ----------------------------- ;
-; Parsing Types
+
+; parse-type
+; PURPOSE: Parse Sexp into Ty
 (: parse-type (Sexp -> Ty))
 (define (parse-type s)
   (match s
     ['num 'num]
-    ['bool 'bool]
+    ['bool 'bool] 
     ['str 'str]
     [(list args ... '-> ret)
      (define parsed-args (map (lambda ([arg : Sexp]) (parse-type arg)) (cast args (Listof Sexp))))
      (fun-ty parsed-args (parse-type ret))]
     [else (error 'parse-type "ZODE: Invalid type ~a" s)]))
 
+; lookup-type
+; PURPOSE: lookup an exprC in the base-type environment and return the type
+(: lookup-type (ExprC TEnv -> Ty))
+(define (lookup-type e tenv)
+  (cond
+    [(empty? tenv) (error 'lookup "ZODE: Variable not found ~e" e)]
+    [(equal? e (first (first tenv))) (second (first tenv))]
+    [else (lookup-type e (rest tenv))]))
 
 
 
@@ -491,7 +507,7 @@
 ;(check-equal? (parse '{locals : x = 2 : y = 6 : {+ x y}})
  ;           (appC (lamC '(x y) '(num num) 'num (appC (idC '+) (list (idC 'x) (idC 'y))))
   ;               (list (numC 2) (numC 6))))
-
+ 
 
 
  
