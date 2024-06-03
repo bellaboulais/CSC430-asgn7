@@ -1,6 +1,11 @@
 #lang typed/racket
 (require typed/rackunit)
 
+;; Failed 8 handin errors still. Struggling with appC in type-check,
+;; when f is a function name from locals (f = ....) it types checks f,
+;; which won't be in the type env. Also don't have type-check done for locals.
+
+
 ;; Assignment 7
 
 ; ----------------------------- ;
@@ -16,13 +21,13 @@
 
  
 ; Define the ExprC for the ZODE4 language
-(define-type ExprC (U numC idC strC ifC locals local-rec lamC appC))                 
+(define-type ExprC (U numC idC strC ifC locals locals-rec lamC appC))                 
 (tstruct numC ([n : Real]))                           
 (tstruct idC ([name : Symbol]))                           
 (tstruct strC ([str : String]))
 (tstruct ifC ([test : ExprC] [then : ExprC] [else : ExprC]))
 (tstruct locals ([bindings : (Listof Clause)] [body : ExprC])) 
-(tstruct local-rec ([id : Symbol] [lamdef : lamC] [expr : ExprC]))
+(tstruct locals-rec ([id : Symbol] [lamdef : lamC] [expr : ExprC]))
 ;(tstruct lamC ([args : (Listof Symbol)] [body : ExprC]))
 (tstruct lamC ([types : (Listof Ty)] [args : (Listof Symbol)] [ret-type : (Option Ty)] [expr : ExprC])) ; lamb-def
 (tstruct appC ([f : ExprC] [args : (Listof ExprC)])) 
@@ -61,16 +66,29 @@
 (define-type TEnv (Listof (List Symbol Ty)))
 (define base-tenv
   (list
-   (list '+ (fun-ty (list 'num 'num) 'num))
-   (list '- (fun-ty (list 'num 'num) 'num))
-   (list '* (fun-ty (list 'num 'num) 'num))
-   (list '/ (fun-ty (list 'num 'num) 'num))
-   (list '<= (fun-ty (list 'num 'num) 'bool))
-   (list 'num-eq? (fun-ty (list 'num 'num) 'bool))
-   (list 'str-eq? (fun-ty (list 'str 'str) 'bool))
-   (list 'substring (fun-ty (list 'str 'num 'num) 'str))
+   (list '+ 'num)
+   (list '- 'num)
+   (list '* 'num)
+   (list '/ 'num)
+   (list '<= 'bool)
+   (list 'num-eq? 'bool)
+   (list 'str-eq? 'bool)
+   (list 'substring 'str)
    (list 'true 'bool)
    (list 'false 'bool)))
+
+;(define base-tenv
+ ; (list
+  ; (list '+ (fun-ty (list 'num 'num) 'num))
+  ; (list '- (fun-ty (list 'num 'num) 'num))
+  ; (list '* (fun-ty (list 'num 'num) 'num))
+  ; (list '/ (fun-ty (list 'num 'num) 'num))
+  ; (list '<= 'bool)
+  ; (list 'num-eq? (fun-ty (list 'num 'num) 'bool))
+  ; (list 'str-eq? (fun-ty (list 'str 'str) 'bool))
+  ; (list 'substring (fun-ty (list 'str 'num 'num) 'str))
+  ; (list 'true 'bool)
+  ; (list 'false 'bool)))
 
 
 ;------------------------------ ;
@@ -82,11 +100,11 @@
 (: top-interp (Sexp -> String))
 (define (top-interp s)
   (define parsed-s (parse s))
-  (display "\nparsed-s: ") (displayln parsed-s)
+  ;(display "\nparsed-s: ") (displayln parsed-s)
   (define type-checked (type-check parsed-s base-tenv))
-  (display "typed-checked: ") (displayln type-checked)
+  ;(display "typed-checked: ") (displayln type-checked)
   (define interp-s (interp parsed-s top-env))
-  (display "interp-s: ") (displayln interp-s)
+  ;(display "interp-s: ") (displayln interp-s)
   (serialize interp-s)) 
 
  
@@ -113,11 +131,11 @@
     [(list 'if ': test ': then ': else) (ifC (parse test) (parse then) (parse else))]
     [(list 'locals ': clauses ... ': body) 
      (parse-locals s)]
-    [(list 'local-rec ': id '= lam-def ': expr)
-     (define parsed-lam (parse lam-def))
-     (if (lamC? parsed-lam)
-         (local-rec (cast id Symbol) parsed-lam (parse expr))
-         (error 'parse "ZODE: Expected a lambda expression in local-rec"))]
+    ;[(list 'locals-rec ': id '= lam-def ': expr) 
+    ; (define parsed-lam (parse lam-def))
+     ;(if (lamC? parsed-lam)
+      ;   (locals-rec (cast id Symbol) parsed-lam (parse expr))
+       ;  (error 'parse "ZODE: Expected a lambda expression in local-rec"))]
     [(list 'lamb ': args ... '-> ret-type ': body)
      (parse-lamC s)]
     [(list f args ...)  
@@ -125,7 +143,7 @@
      (match f
        [(or '+ '- '* '/) ; Check if f is a mathematical operation
         (cond
-          [(check-if parsed-args)
+          [(check-key-word parsed-args)
            (appC (parse f) parsed-args)]
           [else (error 'parse "ZODE: Invalid arguments for operation ~a" f)])]
        ['locals (error 'parse "ZODE: Invalid locals argument ~a" args)]
@@ -156,7 +174,7 @@
                          (interp body (extend-env params argval env2))]
                         [else (error 'interp "ZODE: Invalid number of arguments: ~e" e)])]
                      [(primV p) (interp-primitive p args env)]
-                     [else (error 'interp "ZODE: Invalid application: ~e" e)])]))
+                     [else (error 'interp "ZODE: Invalid application: ~e" e)])]))  
 
 
 ; type-check
@@ -174,9 +192,14 @@
        (if (and (equal? test-type 'bool) (equal? then-type else-type))
            then-type
            (error 'type-check "ZODE: Invalid types in if expression")))]
-    [(local-rec id lamdef expr) (displayln "implement local-rec type check") 'num] ; NEED TO IMPLEMENT
-    [(lamC types args ret-type body) (displayln "implement lamC type check") 'num] ; NEED TO IMPLEMENT
-    [(appC f args) (displayln "implement appC type check") 'num])) ; NEED TO IMPLEMENT
+    ;[(locals-rec id lamdef expr) (displayln "implement local-rec type check") 'num] ; NEED TO IMPLEMENT
+    [(lamC types args ret-type body)
+     (cond
+       [(equal? ret-type #f) (type-check body tenv)]
+       [else ret-type])]
+    [(appC f args)
+     (type-check f tenv)])) 
+
 
 
 ; ----------------------------- ;
@@ -204,14 +227,14 @@
        [(empty? tenv) (error 'lookup-type "ZODE: Variable not found ~e" x)]
        [(equal? s (first (first tenv))) (second (first tenv))]
        [else (lookup-type x (rest tenv))])]
-    [else (error 'lookup-type "ZODE: Variable not found ~e" x)])) 
+    [else (error 'lookup-type "ZODE: Variable not a symbol ~e" x)])) 
  
 
 
 ; ----------------------------- ;
-; -- INTERP HELPER FUNCTIONS -- ;
+; -- INTERP HELPER FUNCTIONS -- ; 
 ; ----------------------------- ;
-
+ 
 ; lookup 
 ; PURPOSE: lookup the value of x in the environment env
 (: lookup (Symbol Env -> Value))
@@ -283,15 +306,20 @@
 ; -- PARSE HELPER FUNCTIONS -- ;
 ; ---------------------------- ;
 
-; check-if
+; check-key-word
 ; PURPOSE: helper function to check for key word if
-(: check-if ((Listof ExprC) -> Boolean))
-(define (check-if lst) 
+(: check-key-word ((Listof ExprC) -> Boolean))
+(define (check-key-word lst)
   (cond
     [(empty? lst) #t]
-    [(equal? (first lst) (idC 'if))
+    [(or (equal? (first lst) (idC 'if))
+         (equal? (first lst) (idC 'locals))
+         (equal? (first lst) (idC 'local-rec))
+         (equal? (first lst) (idC '=))
+         (equal? (first lst) (idC '->))
+         (equal? (first lst) (idC 'lamb)))
      #f]
-    [else (check-if (rest lst))]))
+    [else (check-key-word (rest lst))]))
 
 ; parse-lamC
 ; PURPOSE: parse lamC from lamb statement
@@ -305,15 +333,18 @@
                                       (list ty var)]
                                      [else (error 'parse-lamC "Invalid argument: ~a" arg)]))
                                  (cast args (Listof Sexp))))
-     (define variables (map (lambda ([tv : (List Sexp Sexp)]) (second tv)) (cast vars-and-types (Listof (List Sexp Sexp)))))
-     (define types (map (lambda ([tv : (List Sexp Sexp)]) (first tv)) (cast vars-and-types (Listof (List Sexp Sexp)))))
-     (define parsed-types (map (lambda ([t : Sexp]) (parse-type t)) (cast types (Listof Sexp))))
+     (define variables (map (lambda ([tv : (List Sexp Sexp)]) (second tv))
+                            (cast vars-and-types (Listof (List Sexp Sexp)))))
+     (define types (map (lambda ([tv : (List Sexp Sexp)]) (first tv))
+                        (cast vars-and-types (Listof (List Sexp Sexp)))))
+     (define parsed-types (map (lambda ([t : Sexp]) (parse-type t))
+                               (cast types (Listof Sexp))))
      (if (andmap symbol? variables)
          (if (equal? variables (remove-duplicates variables))
-             (lamC parsed-types (cast variables (Listof Symbol)) (parse-type ret-type) (parse body))
+             (lamC parsed-types (cast variables (Listof Symbol))
+                   (parse-type ret-type) (parse body))
              (error 'parse "ZODE: Duplicate arguments in lambda expression: ~a" args))
-         (error 'parse "ZODE: Invalid arguments for lambda expression: ~a" args))]
-    [else (error 'parse-lamC "ZODE: Invalid lambda expression ~a" s)]))
+         (error 'parse "ZODE: Invalid arguments for lambda expression: ~a" args))]))
 
 ; parse-locals
 ; PURPOSE: parse locals 
@@ -336,15 +367,16 @@
 (define (parse-clause s)
   (match s
     [(list ty (? symbol? id) '= expr)
-     (cond
-       [(equal? id ':)
-        (error 'parse-clause "ZODE: Invalid clause expression ~e" s)]
-       [else (list (Clause (parse-type ty) id (parse expr)))])]
+     (list (Clause (parse-type ty) id (parse expr)))]
     [(list ty (? symbol? id) '= expr ': rest ...)
      (cons (Clause (parse-type ty) id (parse expr)) (parse-clause rest))] 
     [else (error 'parse-clause "ZODE: Invalid clause expression ~e" s)]))
+ 
 
-
+(top-interp '(locals : (num num num num num -> num)
+                     f = (lamb : (num a) (num b) (num c) (num d) (num e) -> num
+                               : (+ (+ a b) (+ (- 0 c) (+ d e))))
+                     : (f 10 9 8 7 6)))
 
 ; ---------------------- ;
 ; ----- TEST CASES ----- ; 
@@ -389,7 +421,7 @@
 ;   test lookup with a variable not found
 (check-exn #px"ZODE: Variable not found" (λ () (lookup 'y (list (list 'x (numV 5))))))
 
-
+ 
 ; ----- interp test cases -----
 ; test interp with numbers
 (check-equal? (interp (numC 5) top-env) (numV 5))
@@ -452,12 +484,22 @@
 
 ; ----- serialize test cases -----
 (check-equal? (serialize (numV 5)) "5")
-(check-equal? (serialize (boolV #t)) "true") 
+(check-equal? (serialize (boolV #t)) "true")  
 (check-equal? (serialize (boolV #f)) "false")
 (check-equal? (serialize (strV "hello")) "\"hello\"")
 (check-equal? (serialize (closV (list 'x) (idC 'x) top-env)) "#<procedure>")
 (check-equal? (serialize (primV '+)) "#<primop>")
 
+; Type test cases
+(check-equal? (parse-type '(str num -> str)) (fun-ty '(str num) 'str))
+(check-exn (regexp (regexp-quote "parse-type: ZODE: Invalid type invalid"))
+           (lambda () (parse-type 'invalid)))
+(check-exn (regexp (regexp-quote "parse-type: ZODE: Invalid type (num ->)"))
+           (lambda () (parse-type '(num ->))))
+(check-exn (regexp (regexp-quote "lookup-type: ZODE: Variable not found (idC 'foo)"))
+           (lambda () (lookup-type (idC 'foo) base-tenv)))
+(check-exn (regexp (regexp-quote "lookup-type: ZODE: Variable not a symbol (strC \"x\")"))
+           (lambda () (lookup-type (strC "x") base-tenv)))
 
 ; ----- PARSER TEST CASES ----- ;
 
@@ -467,12 +509,14 @@
 (check-equal? (parse "30") (strC "30"))
 (check-equal? (parse '{if : true : 5 : 6})
               (ifC (idC 'true) (numC 5) (numC 6)))
-(check-equal? (parse '{f 5 6})
+(check-equal? (parse '{f 5 6}) 
               (appC (idC 'f) (list (numC 5) (numC 6))))
 (check-equal? (parse '{if : false : 5 : 6}) 
               (ifC (idC 'false) (numC 5) (numC 6))) 
 (check-equal? (parse '{lamb : [num x] -> num : {+ x x}})
               (lamC '(num) '(x) 'num (appC (idC '+) (list (idC 'x) (idC 'x)))))
+(check-equal? (parse '{lamb : [str x] -> bool : {str-eq? x "hi"}})
+              (lamC '(str) '(x) 'bool (appC (idC 'str-eq?) (list (idC 'x) (strC "hi")))))
 (check-exn (regexp (regexp-quote "parse: ZODE: Invalid arguments for operation +"))
            (lambda () (parse '(+ if 4))))
 (check-exn (regexp (regexp-quote "parse: ZODE: Duplicate arguments in lambda expression: ((num x) (num x))"))
@@ -483,41 +527,59 @@
            (lambda () (parse '(if : : 0 : 1))))
 (check-exn (regexp (regexp-quote "parse: ZODE: Invalid lamb argument (: (str i) -> str : Hello 31/7 +)"))
            (lambda () (parse '(lamb : [str i] -> str : "Hello" 31/7 +))))
-;(check-exn (regexp (regexp-quote "parse-clause: ZODE: Invalid clause expression '(: = \"\")"))
- ;          (lambda () (parse '(locals : : = "" : "World"))))
-;(check-exn (regexp (regexp-quote "parse-clause: ZODE: Invalid clause expression '(: = \"\")"))
- ;          (lambda () (parse '(locals : x = 2 : : = "" : "World"))))
+(check-exn (regexp (regexp-quote "parse-clause: ZODE: Invalid clause expression '(: = \"\")"))
+          (lambda () (parse '(locals : : = "" : "World"))))
+(check-exn (regexp (regexp-quote "parse-clause: ZODE: Invalid clause expression '(: = \"\")"))
+          (lambda () (parse '(locals : num x = 2 : : = "" : "World"))))
+(check-exn (regexp (regexp-quote "parse-clause: ZODE: Invalid clause expression '(: num x = 5)"))
+          (lambda () (parse-clause '(: num x = 5))))
 
 
-; test cases for top-interp
+; test cases for top-interp 
 (check-equal? (top-interp '5) "5")
 (check-equal? (top-interp "hi") "\"hi\"")
 (check-equal? (top-interp '{+ 5 6}) "11")
 (check-equal? (top-interp '{{lamb : [num x] -> num : {+ x x}} 2}) "4")
 (check-equal? (top-interp (quote (if : true : + : -))) "#<primop>")
+(check-equal? (top-interp '{locals : num z = {+ 9 14} : num y = 98 : {+ z y}}) "121")
 (check-exn
  (regexp
   (regexp-quote
    "parse-lamC: Invalid argument: ()"))
  (lambda () (top-interp '((lamb : [] -> num : 9) 17))))
-;(check-equal? (top-interp (quote ((lamb : seven -> num : (seven)) 
- ;                   ((lamb : minus -> num :(lamb : -> num: (minus (+ 3 10) (* 2 3))))
-  ;                   (lamb : [num x] [num y] -> num : (+ x (* -1 y))))))) "7")
+(check-exn
+ (regexp
+  (regexp-quote
+   "interp: ZODE: Invalid number of arguments: "))
+ (lambda () (top-interp '((lamb : [num x] [num y] -> num : 9) 17))))
+(check-exn
+ (regexp
+  (regexp-quote
+   "type-check: ZODE: Invalid types in if expression"))
+ (lambda () (top-interp '(if : 7 : + : -))))
+
 
 ; test cases for locals 
-;(check-exn (regexp (regexp-quote "parse-clause: ZODE: Invalid clause expression"))
- ;          (lambda () (parse '{locals : z = : y = 98 : {+ z y}})))
-;(check-exn (regexp (regexp-quote "parse: ZODE: Duplicate arguments in lambda expression: (z z)"))
- ;          (lambda () (parse '(locals : z = (lamb : [] -> num: 3) : z = 9 : (z)))))
-;(check-exn (regexp (regexp-quote "parse: ZODE: Invalid locals argument (: x = 5 :)"))
- ;          (lambda () (parse '(locals : x = 5 :))))
-;(check-equal? (parse '{locals : num z = {+ 9 14} : num y = 98 : {+ z y}})
- ;            (appC (lamC '(num num) '(z y) 'num (appC (idC '+) (list (idC 'z) (idC 'y))))
-  ;                (list (appC (idC '+) (list (numC 9) (numC 14))) (numC 98))))
-;(check-equal? (parse '{locals : x = 2 : y = 6 : {+ x y}})
- ;           (appC (lamC '(x y) '(num num) 'num (appC (idC '+) (list (idC 'x) (idC 'y))))
-  ;               (list (numC 2) (numC 6))))
- 
+(check-exn (regexp (regexp-quote "parse-clause: ZODE: Invalid clause expression"))
+          (lambda () (parse '{locals : num z = : num y = 98 : {+ z y}})))
+(check-exn (regexp (regexp-quote "parse: ZODE: Duplicate arguments in lambda expression: (z z)"))
+          (lambda () (parse '(locals : num z = 10 : num z = 9 : (z)))))
+(check-exn (regexp (regexp-quote "parse: ZODE: Invalid locals argument (: num x = 5 :)"))
+          (lambda () (parse '(locals : num x = 5 :)))) 
+(check-equal? (parse '{locals : num z = {+ 9 14} : num y = 98 : {+ z y}})
+            (appC (lamC '(num num) '(z y) #f (appC (idC '+) (list (idC 'z) (idC 'y))))
+                (list (appC (idC '+) (list (numC 9) (numC 14))) (numC 98))))
+(check-equal? (parse '{locals : num x = 2 : num y = 6 : {+ x y}})
+           (appC (lamC '(num num) '(x y) #f (appC (idC '+) (list (idC 'x) (idC 'y))))
+               (list (numC 2) (numC 6))))
+
+;(top-interp '{locals-rec
+ ;: square-helper = {lamb : [num n] -> num
+  ;                       : {if : {<= n 0} 
+   ;                            : 0
+    ;                           : {+ n {square-helper {- n 2}}}}}
+ ;: {locals : {num -> num} square = {lamb : [num n] -> num
+  ;                                       : {square-helper {- {* 2 n} 1}}}
+   ;        : {square 13}}})
 
 
- 
